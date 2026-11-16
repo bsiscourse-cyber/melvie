@@ -164,11 +164,11 @@
         <button id="soundToggleBtn" type="button" aria-label="Toggle ambient audio"
             class="tactile-btn-sm flex items-center gap-2 px-3 py-1.5 bg-paperDark border border-ink rounded-md shadow-hardSm text-ink font-medium cursor-pointer">
             <span id="eqVisual" class="flex items-end gap-0.5 h-3 w-3 justify-center">
-                <span class="w-0.5 h-1 bg-inkMuted rounded-full transition-all" id="bar1"></span>
-                <span class="w-0.5 h-1 bg-inkMuted rounded-full transition-all" id="bar2"></span>
-                <span class="w-0.5 h-1 bg-inkMuted rounded-full transition-all" id="bar3"></span>
+                <span class="w-0.5 bg-clay rounded-full transition-all eq-bar-1" id="bar1"></span>
+                <span class="w-0.5 bg-clay rounded-full transition-all eq-bar-2" id="bar2"></span>
+                <span class="w-0.5 bg-clay rounded-full transition-all eq-bar-3" id="bar3"></span>
             </span>
-            <span id="soundLabel">SOUND: OFF</span>
+            <span id="soundLabel">SOUND: ON</span>
         </button>
     </header>
 
@@ -208,8 +208,7 @@
                 </h1>
 
                 <p class="text-sm sm:text-base text-inkMuted max-w-md leading-relaxed mb-8" id="sealedSubtext">
-                    Nothing heavy—just a random check-in and a few good words. Tap below to unseal the notes and start
-                    the background audio.
+                    Nothing heavy—just a random check-in and a few good words. Tap below to unseal the notes.
                 </p>
 
                 <!-- Primary Tactile Unseal Button -->
@@ -218,7 +217,7 @@
                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M8 5v14l11-7z" />
                     </svg>
-                    <span>TAP TO OPEN &amp; PLAY SOUND</span>
+                    <span>TAP TO UNSEAL NOTE</span>
                 </button>
 
                 <p class="mt-4 font-mono text-[11px] text-inkMuted">
@@ -464,8 +463,10 @@
         class WarmSynthEngine {
             constructor() {
                 this.ctx = null;
-                this.isMuted = true;
+                this.isMuted = false;
                 this.hasStarted = false;
+                this.needsUnlock = false;
+                this._unlockHandler = null;
                 this.chordStep = 0;
 
                 // Background MP3 audio (converted from Download.mp4) with looping
@@ -493,30 +494,73 @@
                 }
             }
 
+            attemptAutoStart() {
+                this.isMuted = false;
+                this.bgAudio.muted = false;
+                this.updateUI();
+
+                const playPromise = this.bgAudio.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise.then(() => {
+                        this.hasStarted = true;
+                        this.needsUnlock = false;
+                        this.removeUnlockListeners();
+                    }).catch(() => {
+                        // Browser blocked unmuted autoplay before first interaction;
+                        // automatically unlock on the very first tap/click/key anywhere.
+                        this.needsUnlock = true;
+                        this.setupUnlockListeners();
+                    });
+                }
+            }
+
+            setupUnlockListeners() {
+                if (this._unlockHandler) return;
+                this._unlockHandler = (e) => {
+                    if (this.isMuted) return;
+                    if (e.target && e.target.closest && e.target.closest('#soundToggleBtn')) return;
+                    this.startAmbient();
+                };
+                ['pointerdown', 'keydown', 'touchstart'].forEach((evt) => {
+                    document.addEventListener(evt, this._unlockHandler, { capture: true });
+                });
+            }
+
+            removeUnlockListeners() {
+                if (!this._unlockHandler) return;
+                ['pointerdown', 'keydown', 'touchstart'].forEach((evt) => {
+                    document.removeEventListener(evt, this._unlockHandler, { capture: true });
+                });
+                this._unlockHandler = null;
+            }
+
             startAmbient() {
                 this.init();
                 this.hasStarted = true;
                 this.isMuted = false;
+                this.needsUnlock = false;
+                this.removeUnlockListeners();
                 this.bgAudio.muted = false;
                 this.bgAudio.play().catch(() => {});
                 this.updateUI();
             }
 
             toggleMute() {
-                if (!this.hasStarted) {
+                if (this.needsUnlock && !this.isMuted) {
                     this.startAmbient();
+                    this.playPluck(523.25);
                     return;
                 }
                 this.isMuted = !this.isMuted;
                 if (!this.isMuted) {
-                    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
-                    this.bgAudio.muted = false;
-                    this.bgAudio.play().catch(() => {});
+                    this.startAmbient();
                     this.playPluck(523.25);
                 } else {
+                    this.needsUnlock = false;
+                    this.removeUnlockListeners();
                     this.bgAudio.pause();
+                    this.updateUI();
                 }
-                this.updateUI();
             }
 
             playWarmChord(freqs) {
@@ -782,8 +826,10 @@
             isOpened = true;
             currentIndex = 0;
 
-            // Start warm synth audio
-            synth.startAmbient();
+            // Keep music playing if sound is enabled (respect manual mute)
+            if (!synth.isMuted) {
+                synth.startAmbient();
+            }
 
             // Update Header Status
             headerStatusLabel.textContent = 'ARCHIVE // UNSEALED';
@@ -1277,6 +1323,7 @@
         replyAuthorInput.value = loadPreferredAuthor();
         updateAuthorPresetHighlight();
         syncSealedSummary();
+        synth.attemptAutoStart();
     </script>
 </body>
 
