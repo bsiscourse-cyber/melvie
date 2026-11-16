@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="bg-paper">
 
 <head>
     <meta charset="UTF-8" />
@@ -150,7 +150,15 @@
 </head>
 
 <body
-    class="bg-paper text-ink min-h-screen flex flex-col justify-between font-sans antialiased selection:bg-clay selection:text-paper paper-grain">
+    class="bg-transparent text-ink min-h-screen flex flex-col justify-between font-sans antialiased selection:bg-clay selection:text-paper paper-grain relative">
+
+    <!-- FULLSCREEN SEAMLESS LOOPING BACKGROUND VIDEO -->
+    <video id="bgVideo" autoplay muted loop playsinline preload="auto" aria-hidden="true"
+        class="fixed inset-0 w-full h-full object-cover -z-20 pointer-events-none select-none">
+        <source src="bg-video.mp4" type="video/mp4" />
+    </video>
+    <!-- Soft Warm Paper Veil for Readability -->
+    <div aria-hidden="true" class="fixed inset-0 -z-10 pointer-events-none bg-paper/55 backdrop-blur-[1px]"></div>
 
     <!-- TOP ARCHIVAL STATUS BAR -->
     <header
@@ -1320,6 +1328,11 @@
         });
 
         // Initial boot
+        const bgVideo = document.getElementById('bgVideo');
+        if (bgVideo) {
+            bgVideo.muted = true;
+            bgVideo.play().catch(() => {});
+        }
         replyAuthorInput.value = loadPreferredAuthor();
         updateAuthorPresetHighlight();
         syncSealedSummary();
